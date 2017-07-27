@@ -59,31 +59,65 @@ namespace GitPlayground
                 return;
             }
 
-            await DissectSubmoduleRepo(gitParentRepoPath, gitParentRepoBranchName, gitSubmoduleRepoPath, gitSubmoduleRepoBranchName);
-
-            //await DoSomeGitHubStuff(gitHubPersonalAccessToken);
-        }
-
-        static async Task DissectSubmoduleRepo(string gitParentRepoPath, string gitParentRepoBranchName, string gitSubmoduleRepoPath, string gitSubmoduleRepoBranchName)
-        {
-            using (var repo = new LibGit2Sharp.Repository(gitSubmoduleRepoPath))
+            var parentRepoInfo = new RepoQueryInfo
             {
-                var branch = repo.Branches[gitSubmoduleRepoBranchName];
-                var newestCommit = branch.Commits.First(); // may need sorting
-                Console.WriteLine($"{newestCommit.Sha}: {newestCommit.Message}");
-            }
+                Owner = gitParentRepoOwner,
+                Name = gitParentRepoName,
+                BranchName = gitParentRepoBranchName,
+            };
+            var submoduleRepoInfo = new RepoQueryInfo
+            {
+                Owner = gitSubmoduleRepoOwner,
+                Name = gitSubmoduleRepoName,
+                BranchName = gitSubmoduleRepoBranchName,
+            };
+
+            await DissectSubmoduleRepo(gitHubPersonalAccessToken, gitPullRequestOwner, parentRepoInfo, submoduleRepoInfo);
         }
 
-        static async Task DoSomeGitHubStuff(string accessToken)
+        static async Task DissectSubmoduleRepo(string accessToken, string pullRequestOwner, RepoQueryInfo parentRepoInfo, RepoQueryInfo submoduleRepoInfo)
         {
-            var client = new GitHubClient(new ProductHeaderValue("submodule-helper"));
+            var gitHubClient = new GitHubClient(new ProductHeaderValue("submodule-helper"));
             var tokenAuth = new Octokit.Credentials(accessToken);
-            client.Credentials = tokenAuth;
+            gitHubClient.Credentials = tokenAuth;
+            var repoClient = new RepositoriesClient(new ApiConnection(gitHubClient.Connection));
 
-            // TODO: Handle auth failure.
-            var user = await client.User.Current();
+            var parentRepoId = (await gitHubClient.Repository.Get(parentRepoInfo.Owner, parentRepoInfo.Name)).Id;
+            var parentTree = await gitHubClient.Git.Tree.Get(parentRepoId, parentRepoInfo.BranchName);
+            var parentBranchLatestSha = parentTree.Sha;
+            Console.WriteLine(parentBranchLatestSha);
 
-            Console.WriteLine($"{user.Name}");
+            var submoduleRepoId = (await gitHubClient.Repository.Get(parentRepoInfo.Owner, submoduleRepoInfo.Name)).Id;
+            var submoduleTree = await gitHubClient.Git.Tree.Get(submoduleRepoId, submoduleRepoInfo.BranchName);
+            var submoduleBranchLatestSha = submoduleTree.Sha;
+            Console.WriteLine(submoduleBranchLatestSha);
+
+            // TODO: Get parent .gitmodules file
+            // TODO: Find `url = https://github.com/{owner}/{name}.git` in the file
+            // TODO: Find submodule path in nearest above `[submodule "{path}"]` line
+            var submodulePath = "subs"; // NOTE: currently hard-coded to patridge/GitPlayground-SampleParent test repo value.
+            // TODO: ??? Determine current submodule target hash (not sure how to access yet via Octokit)
+
+            // TODO: Determine next available `pull-{#}` branch for {pullRequestOwner}/{parentRepoInfo.Name}
+            // TODO: Create `pull-{#}` branch for {pullRequestOwner}/{parentRepoInfo.Name}
+
+            // NOTE: Running same submodule update n times results in n commits. Need to figure out if needed via .gitmodules download first.
+            var updateParentTree = new NewTree { BaseTree = parentBranchLatestSha };
+            updateParentTree.Tree.Add(new NewTreeItem
+            {
+                Mode = FileMode.Submodule,
+                Sha = submoduleBranchLatestSha,
+                Path = submodulePath,
+                Type = TreeType.Commit,
+            });
+            var newParentTree = await gitHubClient.Git.Tree.Create(pullRequestOwner, parentRepoInfo.Name, updateParentTree);
+            var newCommit = new NewCommit($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", newParentTree.Sha, parentBranchLatestSha);
+            var commit = await gitHubClient.Git.Commit.Create(pullRequestOwner, parentRepoInfo.Name, newCommit);
+            // TODO: Figure out how to get this value without the string concat hack.
+            var parentBranchRef = $"heads/{parentRepoInfo.BranchName}";
+            await gitHubClient.Git.Reference.Update(pullRequestOwner, parentRepoInfo.Name, parentBranchRef, new ReferenceUpdate(commit.Sha));
+
+            // TODO: Create pull request from {pullRequestOwner}/{parentRepoInfo.Name} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
         }
 
         static void ShowHelp(OptionSet os)
