@@ -138,7 +138,10 @@ namespace GitPlayground
                 }
                 else
                 {
-                    // TODO: If PR owner doesn't have fork of repo, make one
+                    // If PR owner doesn't have fork of repo, make one.
+                    // TODO: Handle if user has non-fork repo of the same name as the parent repo.
+                    pullRequestOwnerFork = await forksClient.Create(pullRequestOwner, parentRepoInfo.Name, new NewRepositoryFork());
+                    // NOTE: If you create a fork on an owner who already has one, you just get back the fork they already had.
                     throw new NotImplementedException("Need to create new parent repo fork for PR owner.");
                 }
             }
