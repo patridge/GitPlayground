@@ -93,6 +93,7 @@ namespace GitPlayground
             var forksClient = new RepositoryForksClient(apiConnection);
             var referencesClient = new ReferencesClient(apiConnection);
             var pullRequestsClient = new PullRequestsClient(apiConnection);
+            var commitsClient = new CommitsClient(apiConnection);
 
             // Get parent repo details.
             var parentRepoId = (await gitHubClient.Repository.Get(parentRepoInfo.Owner, parentRepoInfo.Name)).Id;
@@ -105,7 +106,7 @@ namespace GitPlayground
             var submoduleBranchLatestSha = (await gitHubClient.Git.Tree.Get(submoduleRepoId, submoduleRepoInfo.BranchName)).Sha;
             Console.WriteLine($"Submodule repo branch latest hash: {submoduleBranchLatestSha}");
 
-            // TODO: Get parent .gitmodules file
+            // Find submodule path in parent .gitmodules file.
             var gitmodulesContent = await repoClient.Content.GetAllContents(parentRepoId, ".gitmodules");
             if (gitmodulesContent.Count != 1) { throw new InvalidOperationException("Did not find a .gitmodules file in the parent repo."); }
             // ASSUMPTION: submodule path ends with submodule repo name.
@@ -119,9 +120,23 @@ namespace GitPlayground
             var submodulePath = new string(gitmodulesGroupForSubmodule.First().SkipWhile(c => c != '"').Skip(1).TakeWhile(c => c != '"').ToArray());
             Console.WriteLine(submodulePath);
 
-            // TODO: ??? Determine current submodule target hash (not sure how to access yet via Octokit)
-            // TODO: Figure out if update needed based on submodule repo latest hash vs. parent repo submodule target hash.
-            Console.WriteLine($"WARNING: Not currently verifying if submodule actually needs updating. (Currently unable to determine submodule target hash.)");
+            // NOTE: To get submodule target hashes, you have to query the parent directory.
+            // Get the path one level up from submodule path.
+            var submodulePathParts = submodulePath.Split(new[] { '/' });
+            var submodulePathImmediateParentPath = string.Join("/", submodulePathParts.Take(submodulePathParts.Length - 1));
+            var submodulePathContents = await repoClient.Content.GetAllContents(parentRepoId, submodulePathImmediateParentPath);
+            // Find our submodule's "file" in the parent directory's contents.
+            var submoduleContent = submodulePathContents.FirstOrDefault(content => content.Path == submodulePath);
+            if (submoduleContent == null) { throw new NotImplementedException("Could not retrieve submodule content from repo to get target SHA."); }
+            // That submodule "file" has a hash that corresponds with the submodule target.
+            var parentSubmoduleTargetSha = submoduleContent.Sha;
+            Console.WriteLine($"Parent currently targeting submodule at `{parentSubmoduleTargetSha}`.");
+            if (parentSubmoduleTargetSha == submoduleBranchLatestSha)
+            {
+                Console.WriteLine($"Parent submodule target hash matches latest on submodule repo branch: `{parentSubmoduleTargetSha}`.");
+                Console.WriteLine($"No pull request is needed.");
+                return;
+            }
 
             var pullRequestRepoName = parentRepoInfo.Name;
             var parentForks = await forksClient.GetAll(parentRepoId);
@@ -139,12 +154,12 @@ namespace GitPlayground
                 else
                 {
                     // If PR owner doesn't have fork of repo, make one.
-                    // TODO: Handle if user has non-fork repo of the same name as the parent repo.
                     var pullRequestOwnerReposWithNamesLikeParent = (await repoClient.GetAllForCurrent())
                         .Where(repo => repo.Name.StartsWith(parentRepoInfo.Name));
                     var hasRepoWithParentNameThatIsNotFork = pullRequestOwnerReposWithNamesLikeParent.Any(repo => repo.Name == parentRepoInfo.Name);
                     if (hasRepoWithParentNameThatIsNotFork)
                     {
+                        // Handle if user has non-fork repo of the same name as the parent repo.
                         var repoPrefix = $"{parentRepoInfo.Name}-";
                         var largestRepoSuffix = pullRequestOwnerReposWithNamesLikeParent
                             .Where(repo => repo.Name.StartsWith(repoPrefix))
@@ -187,9 +202,7 @@ namespace GitPlayground
             var pullRequestBranch = await referencesClient.Create(pullRequestOwnerForkRepoId, new NewReference($"refs/heads/{pullRequestBranchName}", parentBranchLatestSha));
 
             // Create commit on parent to update submodule hash target.
-            // NOTE: Running same submodule update n times results in n commits until we verify update needed.
             var updateParentTree = new NewTree { BaseTree = parentBranchLatestSha };
-
             updateParentTree.Tree.Add(new NewTreeItem
             {
                 Mode = FileMode.Submodule,

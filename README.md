@@ -3,10 +3,10 @@
 1. find submodule in parent repo
     1. [x] pull .gitmodules file
 	2. [x] extract submodule path for given submodule repo
-	3. determine parent's current submodule hash target
+	3. [x] determine parent's current submodule hash target
 2. check submodule repo for changes
     1. [x] get given submodule repo's latest hash for given branch
-	2. verify difference between 1.3 value and 2.1 value
+	2. [x] verify difference between 1.3 value and 2.1 value
 3. if 2.2, set up a Pull Request
     1. [x] prep PR creator fork
 	    1. [x] fork to PR creator, if doesn't exist
