@@ -225,9 +225,9 @@ namespace GitPlayground
                 pullRequestSourceRef = $"{pullRequestOwner}:{pullRequestBranchRef}";
             }
             Console.WriteLine($"{nameof(pullRequestSourceRef)}: {pullRequestSourceRef}");
-            
-            // TODO: Create pull request from {pullRequestOwner}/{parentRepoInfo.Name} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
-            //var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestRef, parentBranchRef));
+
+            // Create a pull request from {pullRequestOwner}/{pullRequestRepoName} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
+            var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestSourceRef, parentBranchRef));
         }
 
         static void ShowHelp(OptionSet os)
