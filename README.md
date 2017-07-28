@@ -1,8 +1,8 @@
 ## TODO
 
 1. find submodule in parent repo
-    1. pull .gitmodules file
-	2. extract submodule path for given submodule repo
+    1. [x] pull .gitmodules file
+	2. [x] extract submodule path for given submodule repo
 	3. determine parent's current submodule hash target
 2. check submodule repo for changes
     1. [x] get given submodule repo's latest hash for given branch

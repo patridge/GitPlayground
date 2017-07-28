@@ -106,13 +106,22 @@ namespace GitPlayground
             Console.WriteLine($"Submodule repo branch latest hash: {submoduleBranchLatestSha}");
 
             // TODO: Get parent .gitmodules file
-            // TODO: Find `url = https://github.com/{owner}/{name}.git` in the file
-            // TODO: Find submodule path in nearest above `[submodule "{path}"]` line
-            var submodulePath = "main/external/mono-tools";//"subs/GitPlayground-SampleSubmodule"; // NOTE: currently hard-coded to patridge/GitPlayground-SampleParent test repo value.
-            Console.WriteLine($"WARNING: submodule path is currently hard-coded: {submodulePath}");
+            var gitmodulesContent = await repoClient.Content.GetAllContents(parentRepoId, ".gitmodules");
+            if (gitmodulesContent.Count != 1) { throw new InvalidOperationException("Did not find a .gitmodules file in the parent repo."); }
+            // ASSUMPTION: submodule path ends with submodule repo name.
+            var gitmodulesGroupForSubmodule = gitmodulesContent[0].Content
+                .Split(new[] { '\n', '\r', }, StringSplitOptions.RemoveEmptyEntries) // Split by line breaks, removing empties for doubles on `\r\n`
+                .Select((line, i) => new { Index = i, Line = line }) // Index all the lines
+                .GroupBy(indexedLine => Math.Round(indexedLine.Index / 3.0)) // Group every 3 lines
+                .Select(groupedIndexedLines => groupedIndexedLines.Select(indexedLine => indexedLine.Line))
+                .FirstOrDefault(indexedGroup => indexedGroup.First().EndsWith($"{submoduleRepoInfo.Name}\"]"));
+            if (gitmodulesGroupForSubmodule == null) { throw new InvalidOperationException("Did not find requested submodule repo in parent repo's .gitmodules file."); }
+            var submodulePath = new string(gitmodulesGroupForSubmodule.First().SkipWhile(c => c != '"').Skip(1).TakeWhile(c => c != '"').ToArray());
+            Console.WriteLine(submodulePath);
 
             // TODO: ??? Determine current submodule target hash (not sure how to access yet via Octokit)
             // TODO: Figure out if update needed based on submodule repo latest hash vs. parent repo submodule target hash.
+            Console.WriteLine($"WARNING: Not currently verifying if submodule actually needs updating. (Currently unable to determine submodule target hash.)");
 
             var pullRequestRepoName = parentRepoInfo.Name;
             var parentForks = await forksClient.GetAll(parentRepoId);
@@ -152,8 +161,6 @@ namespace GitPlayground
                 .FirstOrDefault() ?? 0;
             var pullRequestBranchName = $"{pullRequestBranchPrefix}{pullRequestLargestExistingNumber + 1}";
             Console.WriteLine($"Creating PR fork branch: {pullRequestBranchName}");
-            // NOTE: untested when fork is out-of-date
-            //       may need to get latest upstream commits into fork first somehow
             var pullRequestBranch = await referencesClient.Create(pullRequestOwnerForkRepoId, new NewReference($"refs/heads/{pullRequestBranchName}", parentBranchLatestSha));
 
             // Create commit on parent to update submodule hash target.
@@ -171,10 +178,10 @@ namespace GitPlayground
             var newCommit = new NewCommit($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", newParentTree.Sha, parentBranchLatestSha);
             var commit = await gitHubClient.Git.Commit.Create(pullRequestOwner, parentRepoInfo.Name, newCommit);
             // TODO: Figure out how to get this value without the string concat hack.
-            var parentBranchRef = $"heads/{parentRepoInfo.BranchName}";
             var pullRequestBranchRef = $"heads/{pullRequestBranchName}";
             await gitHubClient.Git.Reference.Update(pullRequestOwnerForkRepoId, pullRequestBranchRef, new ReferenceUpdate(commit.Sha));
 
+            var parentBranchRef = $"heads/{parentRepoInfo.BranchName}";
             var pullRequestSourceRef = $"{pullRequestBranchRef}";
             if (!isPullRequestOwnerSameAsParentRepoOwner)
             {
