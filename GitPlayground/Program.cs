@@ -140,6 +140,26 @@ namespace GitPlayground
                 {
                     // If PR owner doesn't have fork of repo, make one.
                     // TODO: Handle if user has non-fork repo of the same name as the parent repo.
+                    var pullRequestOwnerReposWithNamesLikeParent = (await repoClient.GetAllForCurrent())
+                        .Where(repo => repo.Name.StartsWith(parentRepoInfo.Name));
+                    var hasRepoWithParentNameThatIsNotFork = pullRequestOwnerReposWithNamesLikeParent.Any(repo => repo.Name == parentRepoInfo.Name);
+                    if (hasRepoWithParentNameThatIsNotFork)
+                    {
+                        var repoPrefix = $"{parentRepoInfo.Name}-";
+                        var largestRepoSuffix = pullRequestOwnerReposWithNamesLikeParent
+                            .Where(repo => repo.Name.StartsWith(repoPrefix))
+                            .Select(b =>
+                            {
+                                var repoSuffix = new string(b.Name.Skip(repoPrefix.Length).ToArray());
+                                bool repoSuffixNumeric = int.TryParse(repoSuffix, out int repoSuffixNumber);
+                                return (repoSuffixNumeric ? (int?)repoSuffixNumber : null);
+                            })
+                            .Where(repoSuffixNumber => repoSuffixNumber != null)
+                            .OrderByDescending(n => n)
+                            .FirstOrDefault() ?? 0;
+                        var pullRequestForkName = $"{repoPrefix}{largestRepoSuffix + 1}";
+                        Console.WriteLine($"Creating PR fork repo: {pullRequestForkName}");
+                    }
                     pullRequestOwnerFork = await forksClient.Create(pullRequestOwner, parentRepoInfo.Name, new NewRepositoryFork());
                     // NOTE: If you create a fork on an owner who already has one, you just get back the fork they already had.
                     throw new NotImplementedException("Need to create new parent repo fork for PR owner.");
@@ -150,7 +170,7 @@ namespace GitPlayground
                 Console.WriteLine($"No PR fork needed: parent repo owner matches PR owner; just branch and PR in parent repo.");
             }
             var pullRequestBranchPrefix = "patch-";
-            var pullRequestOwnerForkRepoId = (await gitHubClient.Repository.Get(pullRequestOwner, parentRepoInfo.Name)).Id;
+            var pullRequestOwnerForkRepoId = (await gitHubClient.Repository.Get(pullRequestOwner, pullRequestRepoName)).Id;
             var pullRequestLargestExistingNumber = (await repoClient.Branch.GetAll(pullRequestOwnerForkRepoId))
                 .Where(b => b.Name.StartsWith(pullRequestBranchPrefix))
                 .Select(b =>
@@ -192,9 +212,9 @@ namespace GitPlayground
                 pullRequestSourceRef = $"{pullRequestOwner}:{pullRequestBranchRef}";
             }
             Console.WriteLine($"{nameof(pullRequestSourceRef)}: {pullRequestSourceRef}");
-            //var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestRef, parentBranchRef));
             
             // TODO: Create pull request from {pullRequestOwner}/{parentRepoInfo.Name} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
+            //var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestRef, parentBranchRef));
         }
 
         static void ShowHelp(OptionSet os)
