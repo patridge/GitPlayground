@@ -140,7 +140,7 @@ namespace SubmoduleUpdateGenerator
 
             var pullRequestRepoName = parentRepoInfo.Name;
             var parentForks = await forksClient.GetAll(parentRepoId);
-            var isPullRequestOwnerSameAsParentRepoOwner = pullRequestOwner != parentRepoInfo.Owner;
+            var isPullRequestOwnerSameAsParentRepoOwner = pullRequestOwner == parentRepoInfo.Owner;
             if (isPullRequestOwnerSameAsParentRepoOwner)
             {
                 // Deal with user's parent repo fork.
@@ -224,8 +224,8 @@ namespace SubmoduleUpdateGenerator
                 // For a PR, the comparison ref to a different user requires a prefix.
                 pullRequestSourceRef = $"{pullRequestOwner}:{pullRequestBranchRef}";
             }
-            Console.WriteLine($"{nameof(pullRequestSourceRef)}: {pullRequestSourceRef}");
 
+            Console.WriteLine($"Creating pull request from {pullRequestSourceRef} to {parentRepoInfo.Owner}:{parentBranchRef}");
             // Create a pull request from {pullRequestOwner}/{pullRequestRepoName} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
             var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestSourceRef, parentBranchRef));
         }
