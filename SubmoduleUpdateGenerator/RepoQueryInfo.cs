@@ -1,4 +1,4 @@
-﻿namespace GitPlayground
+﻿namespace SubmoduleUpdateGenerator
 {
     public class RepoQueryInfo
     {

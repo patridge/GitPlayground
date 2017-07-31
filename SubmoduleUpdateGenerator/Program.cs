@@ -6,7 +6,7 @@ using System.Configuration;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace GitPlayground
+namespace SubmoduleUpdateGenerator
 {
     class Program
     {
@@ -232,7 +232,7 @@ namespace GitPlayground
 
         static void ShowHelp(OptionSet os)
         {
-            Console.WriteLine("GitPlayground [options]");
+            Console.WriteLine("SubmoduleUpdateGenerator [options]");
             os.WriteOptionDescriptions(Console.Out);
             Environment.Exit(1);
         }

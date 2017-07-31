@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{D956C671-591D-47B8-8649-7F974D880861}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>GitPlayground</RootNamespace>
-    <AssemblyName>GitPlayground</AssemblyName>
+    <RootNamespace>SubmoduleUpdateGenerator</RootNamespace>
+    <AssemblyName>SubmoduleUpdateGenerator</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
