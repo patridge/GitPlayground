@@ -2,6 +2,7 @@
 using Nito.AsyncEx;
 using Octokit;
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Linq;
 using System.Threading.Tasks;
@@ -110,15 +111,10 @@ namespace SubmoduleUpdateGenerator
             var gitmodulesContent = await repoClient.Content.GetAllContents(parentRepoId, ".gitmodules");
             if (gitmodulesContent.Count != 1) { throw new InvalidOperationException("Did not find a .gitmodules file in the parent repo."); }
             // ASSUMPTION: submodule path ends with submodule repo name.
-            var gitmodulesGroupForSubmodule = gitmodulesContent[0].Content
-                .Split(new[] { '\n', '\r', }, StringSplitOptions.RemoveEmptyEntries) // Split by line breaks, removing empties for doubles on `\r\n`
-                .Select((line, i) => new { Index = i, Line = line }) // Index all the lines
-                .GroupBy(indexedLine => Math.Round(indexedLine.Index / 3.0)) // Group every 3 lines
-                .Select(groupedIndexedLines => groupedIndexedLines.Select(indexedLine => indexedLine.Line))
-                .FirstOrDefault(indexedGroup => indexedGroup.First().EndsWith($"{submoduleRepoInfo.Name}\"]"));
+            var gitmodulesGroupForSubmodule = FindGitSubmoduleEntry(gitmodulesContent[0].Content, submoduleRepoInfo.Name);
             if (gitmodulesGroupForSubmodule == null) { throw new InvalidOperationException("Did not find requested submodule repo in parent repo's .gitmodules file."); }
-            var submodulePath = new string(gitmodulesGroupForSubmodule.First().SkipWhile(c => c != '"').Skip(1).TakeWhile(c => c != '"').ToArray());
-            Console.WriteLine(submodulePath);
+            var submodulePath = gitmodulesGroupForSubmodule.Path;
+            Console.WriteLine($"Found submodule path: {submodulePath}");
 
             // NOTE: To get submodule target hashes, you have to query the parent directory.
             // Get the path one level up from submodule path.
@@ -228,6 +224,59 @@ namespace SubmoduleUpdateGenerator
             Console.WriteLine($"Creating pull request from {pullRequestSourceRef} to {parentRepoInfo.Owner}:{parentBranchRef}");
             // Create a pull request from {pullRequestOwner}/{pullRequestRepoName} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
             var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestSourceRef, parentBranchRef));
+        }
+
+        static GitSubmoduleEntry FindGitSubmoduleEntry(string gitmodulesFileContent, string submoduleRepoName)
+        {
+            var gitmodulesGroupForSubmodule = gitmodulesFileContent
+                // Split by line breaks, removing empties for doubles on `\r\n`
+                .Split(new[] { '\n', '\r', }, StringSplitOptions.RemoveEmptyEntries)
+                // Break into groups of lines per submodule chunk.
+                .Aggregate(
+                    new List<List<string>>(),
+                    (acc, line) =>
+                    {
+                        if (line.StartsWith("["))
+                        {
+                            acc.Add(new List<string>());
+                        }
+                        acc.Last().Add(line);
+                        return acc;
+                    }
+                )
+                .Select(submoduleLines =>
+                {
+                    // Parse set of lines into submodule data.
+                    var submoduleEntry = new GitSubmoduleEntry();
+                    foreach (var line in submoduleLines)
+                    {
+                        if (line.StartsWith("[submodule"))
+                        {
+                            submoduleEntry.Name = new string(line
+                                .SkipWhile(c => c != '"')
+                                .Skip(1)
+                                .TakeWhile(c => c != '"').ToArray());
+                        }
+                        else if (line.TrimStart().StartsWith("path"))
+                        {
+                            submoduleEntry.Path = new string(line
+                                .SkipWhile(c => c != '=')
+                                .Skip(2)
+                                .TakeWhile(c => c != '\r' && c != '\n').ToArray());
+                        }
+                        else if (line.TrimStart().StartsWith("url"))
+                        {
+                            submoduleEntry.Url = new string(line
+                                .SkipWhile(c => c != '=')
+                                .Skip(2)
+                                .TakeWhile(c => c != '\r' && c != '\n').ToArray());
+                        }
+                    }
+                    return submoduleEntry;
+                })
+                // ASSUMPTION: URL for submodule will end with the submodule repo name + ".git"
+                .FirstOrDefault(submoduleEntry => submoduleEntry.Url.EndsWith($"{submoduleRepoName}.git", StringComparison.InvariantCultureIgnoreCase));
+            return gitmodulesGroupForSubmodule;
         }
 
         static void ShowHelp(OptionSet os)
