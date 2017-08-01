@@ -177,10 +177,10 @@ namespace SubmoduleUpdateGenerator
                         pullRequestForkName = $"{repoPrefix}{largestRepoSuffix + 1}";
                     }
                     Console.WriteLine($"Creating PR fork repo: {pullRequestOwner}/{pullRequestForkName}");
-                    //throw new NotImplementedException("Unable to create a fork automatically right now. Create it manually and try again. (It can also take up to 5 minutes to be accessible.)");
+                    throw new NotImplementedException("Unable to create a fork automatically right now. Create it manually and try again. (It can also take up to 5 minutes to be accessible.)");
                     // NOTE: If you create a fork on an owner who already has one, you just get back the fork they already had.
                     // TODO: For some reason this fails with a 404 error.
-                    pullRequestOwnerFork = await forksClient.Create(pullRequestOwner, pullRequestForkName, new NewRepositoryFork() { Organization = pullRequestOwner });
+                    //pullRequestOwnerFork = await forksClient.Create(pullRequestOwner, pullRequestForkName, new NewRepositoryFork() { Organization = pullRequestOwner });
                 }
             }
             else
