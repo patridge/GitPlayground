@@ -1,3 +1,7 @@
+## How do I get it?
+
+You can download/clone this repo and build it yourself, or you can download the [latest Release](https://github.com/patridge/SubmoduleUpdateGenerator/releases).
+
 ## What's it do?
 
 This is a command-line utility to help update submodule references in GitHub repositories via pull requests.
