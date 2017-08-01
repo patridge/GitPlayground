@@ -23,6 +23,12 @@ This started as an experiment in learning Octokit to help out with a separate pr
 
 ## Sample command line params
 
+To get some information about all the potential command line parameters, just run the program with the following command.
+
+```bash
+$ SubmoduleUpdateGenerator --help
+```
+
 These are likely not useful without customization.
 
 ### Some test repos
