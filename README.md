@@ -31,4 +31,4 @@ These are likely not useful without customization.
 
 ### mono/monodevelop vs. mono/mono-tools submodule
 
--owner=mono -parent=monodevelop -parentBranch=master -subOwner=mono -sub=mono-tools -subBranch=master -pullOwner=patridge
+-owner=mono -parent=monodevelop -parentBranch=master -subOwner=mono -sub=mono-tools -subBranch=master -pullOwner=patridge -dryrun=true

@@ -28,6 +28,8 @@ namespace SubmoduleUpdateGenerator
             string gitSubmoduleRepoOwner = null;
             string gitSubmoduleRepoBranchName = "master";
             string gitPullRequestOwner = null;
+            string gitPullRequestTitle = null;
+            bool gitDryRun = false;
 
             OptionSet options = null;
             options = new OptionSet {
@@ -42,6 +44,8 @@ namespace SubmoduleUpdateGenerator
                 { "subOwner=", "Submodule repo owner, if distince from parent owner", owner => gitSubmoduleRepoOwner = owner },
                 { "subBranch=", "Branch name within submodule repo", subBranch =>  gitSubmoduleRepoBranchName = subBranch },
                 { "pullOwner=", "Owner of pull request to be created", pullOwner => gitPullRequestOwner = pullOwner },
+                { "pullMessage=", "Title of the generated pull request", pullMessage => gitPullRequestTitle = pullMessage },
+                { "dryrun=", "Dry run: do not make final pull request on parent GitHub repo", dryRun => { if (!bool.TryParse(dryRun, out gitDryRun)) { gitDryRun = false; } } },
             };
 
             try
@@ -52,6 +56,7 @@ namespace SubmoduleUpdateGenerator
                 gitHubPersonalAccessToken = gitHubPersonalAccessToken ?? (gitHubPersonalAccessToken = ConfigurationManager.AppSettings.Get(gitHubPersonalAccessTokenKey));
                 gitSubmoduleRepoOwner = gitSubmoduleRepoOwner ?? gitParentRepoOwner;
                 gitPullRequestOwner = gitPullRequestOwner ?? gitParentRepoOwner;
+                gitPullRequestTitle = gitPullRequestTitle ?? $"Update submodule {gitSubmoduleRepoOwner}/{gitSubmoduleRepoName}";
             }
             catch (OptionException e)
             {
@@ -84,10 +89,10 @@ namespace SubmoduleUpdateGenerator
                 BranchName = gitSubmoduleRepoBranchName,
             };
 
-            await DissectSubmoduleRepo(gitHubClient, gitPullRequestOwner, parentRepoInfo, submoduleRepoInfo);
+            await UpdateSubmoduleTarget(gitHubClient, gitPullRequestOwner, gitPullRequestTitle, parentRepoInfo, submoduleRepoInfo, gitDryRun);
         }
 
-        static async Task DissectSubmoduleRepo(GitHubClient gitHubClient, string pullRequestOwner, RepoQueryInfo parentRepoInfo, RepoQueryInfo submoduleRepoInfo)
+        static async Task UpdateSubmoduleTarget(GitHubClient gitHubClient, string pullRequestOwner, string pullRequestTitle, RepoQueryInfo parentRepoInfo, RepoQueryInfo submoduleRepoInfo, bool gitDryRun)
         {
             var apiConnection = new ApiConnection(gitHubClient.Connection);
             var repoClient = new RepositoriesClient(apiConnection);
@@ -99,13 +104,12 @@ namespace SubmoduleUpdateGenerator
             // Get parent repo details.
             var parentRepoId = (await gitHubClient.Repository.Get(parentRepoInfo.Owner, parentRepoInfo.Name)).Id;
             var parentBranchLatestSha = (await gitHubClient.Git.Tree.Get(parentRepoId, parentRepoInfo.BranchName)).Sha;
-            Console.WriteLine(parentBranchLatestSha);
-            Console.WriteLine($"Parent repo branch latest hash: {parentBranchLatestSha}");
+            Console.WriteLine($"Parent repo branch latest hash: {parentBranchLatestSha}.");
 
             // Get latest submodule repo details
             var submoduleRepoId = (await gitHubClient.Repository.Get(parentRepoInfo.Owner, submoduleRepoInfo.Name)).Id;
             var submoduleBranchLatestSha = (await gitHubClient.Git.Tree.Get(submoduleRepoId, submoduleRepoInfo.BranchName)).Sha;
-            Console.WriteLine($"Submodule repo branch latest hash: {submoduleBranchLatestSha}");
+            Console.WriteLine($"Submodule repo branch latest hash: {submoduleBranchLatestSha}.");
 
             // Find submodule path in parent .gitmodules file.
             var gitmodulesContent = await repoClient.Content.GetAllContents(parentRepoId, ".gitmodules");
@@ -126,10 +130,10 @@ namespace SubmoduleUpdateGenerator
             if (submoduleContent == null) { throw new NotImplementedException("Could not retrieve submodule content from repo to get target SHA."); }
             // That submodule "file" has a hash that corresponds with the submodule target.
             var parentSubmoduleTargetSha = submoduleContent.Sha;
-            Console.WriteLine($"Parent currently targeting submodule at `{parentSubmoduleTargetSha}`.");
+            Console.WriteLine($"Parent current submodule hash: {parentSubmoduleTargetSha}.");
             if (parentSubmoduleTargetSha == submoduleBranchLatestSha)
             {
-                Console.WriteLine($"Parent submodule target hash matches latest on submodule repo branch: `{parentSubmoduleTargetSha}`.");
+                Console.WriteLine($"Parent submodule target hash matches latest on submodule repo branch: {parentSubmoduleTargetSha}.");
                 Console.WriteLine($"No pull request is needed.");
                 return;
             }
@@ -137,7 +141,7 @@ namespace SubmoduleUpdateGenerator
             var pullRequestRepoName = parentRepoInfo.Name;
             var parentForks = await forksClient.GetAll(parentRepoId);
             var isPullRequestOwnerSameAsParentRepoOwner = pullRequestOwner == parentRepoInfo.Owner;
-            if (isPullRequestOwnerSameAsParentRepoOwner)
+            if (!isPullRequestOwnerSameAsParentRepoOwner)
             {
                 // Deal with user's parent repo fork.
                 var pullRequestOwnerFork = parentForks.FirstOrDefault(f => f.Owner.Login == pullRequestOwner);
@@ -150,9 +154,11 @@ namespace SubmoduleUpdateGenerator
                 else
                 {
                     // If PR owner doesn't have fork of repo, make one.
+                    // NOTE: This API call can take a few seconds to return from GitHub.
                     var pullRequestOwnerReposWithNamesLikeParent = (await repoClient.GetAllForCurrent())
-                        .Where(repo => repo.Name.StartsWith(parentRepoInfo.Name));
+                        .Where(repo => repo.Owner.Name == pullRequestOwner && repo.Name.StartsWith(parentRepoInfo.Name));
                     var hasRepoWithParentNameThatIsNotFork = pullRequestOwnerReposWithNamesLikeParent.Any(repo => repo.Name == parentRepoInfo.Name);
+                    string pullRequestForkName = parentRepoInfo.Name;
                     if (hasRepoWithParentNameThatIsNotFork)
                     {
                         // Handle if user has non-fork repo of the same name as the parent repo.
@@ -168,12 +174,13 @@ namespace SubmoduleUpdateGenerator
                             .Where(repoSuffixNumber => repoSuffixNumber != null)
                             .OrderByDescending(n => n)
                             .FirstOrDefault() ?? 0;
-                        var pullRequestForkName = $"{repoPrefix}{largestRepoSuffix + 1}";
-                        Console.WriteLine($"Creating PR fork repo: {pullRequestForkName}");
+                        pullRequestForkName = $"{repoPrefix}{largestRepoSuffix + 1}";
                     }
-                    pullRequestOwnerFork = await forksClient.Create(pullRequestOwner, parentRepoInfo.Name, new NewRepositoryFork());
+                    Console.WriteLine($"Creating PR fork repo: {pullRequestOwner}/{pullRequestForkName}");
+                    //throw new NotImplementedException("Unable to create a fork automatically right now. Create it manually and try again. (It can also take up to 5 minutes to be accessible.)");
                     // NOTE: If you create a fork on an owner who already has one, you just get back the fork they already had.
-                    throw new NotImplementedException("Need to create new parent repo fork for PR owner.");
+                    // TODO: For some reason this fails with a 404 error.
+                    pullRequestOwnerFork = await forksClient.Create(pullRequestOwner, pullRequestForkName, new NewRepositoryFork() { Organization = pullRequestOwner });
                 }
             }
             else
@@ -194,8 +201,9 @@ namespace SubmoduleUpdateGenerator
                 .OrderByDescending(n => n)
                 .FirstOrDefault() ?? 0;
             var pullRequestBranchName = $"{pullRequestBranchPrefix}{pullRequestLargestExistingNumber + 1}";
-            Console.WriteLine($"Creating PR fork branch: {pullRequestBranchName}");
-            var pullRequestBranch = await referencesClient.Create(pullRequestOwnerForkRepoId, new NewReference($"refs/heads/{pullRequestBranchName}", parentBranchLatestSha));
+            var branchReference = $"refs/heads/{pullRequestBranchName}";
+            Console.WriteLine($"Creating PR fork branch: {pullRequestBranchName}.");
+            var pullRequestBranch = await referencesClient.Create(pullRequestOwnerForkRepoId, new NewReference(branchReference, parentBranchLatestSha));
 
             // Create commit on parent to update submodule hash target.
             var updateParentTree = new NewTree { BaseTree = parentBranchLatestSha };
@@ -207,10 +215,11 @@ namespace SubmoduleUpdateGenerator
                 Type = TreeType.Commit,
             });
             var newParentTree = await gitHubClient.Git.Tree.Create(pullRequestOwnerForkRepoId, updateParentTree);
-            var newCommit = new NewCommit($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", newParentTree.Sha, parentBranchLatestSha);
-            var commit = await gitHubClient.Git.Commit.Create(pullRequestOwner, parentRepoInfo.Name, newCommit);
-            // TODO: Figure out how to get this value without the string concat hack.
+            var commitMessage = $"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name} to latest.";
+            var newCommit = new NewCommit(commitMessage, newParentTree.Sha, parentBranchLatestSha);
             var pullRequestBranchRef = $"heads/{pullRequestBranchName}";
+            var commit = await gitHubClient.Git.Commit.Create(pullRequestOwner, parentRepoInfo.Name, newCommit);
+            Console.WriteLine($"Updating submodule on fork branch: {commitMessage}");
             await gitHubClient.Git.Reference.Update(pullRequestOwnerForkRepoId, pullRequestBranchRef, new ReferenceUpdate(commit.Sha));
 
             var parentBranchRef = $"heads/{parentRepoInfo.BranchName}";
@@ -221,9 +230,25 @@ namespace SubmoduleUpdateGenerator
                 pullRequestSourceRef = $"{pullRequestOwner}:{pullRequestBranchRef}";
             }
 
-            Console.WriteLine($"Creating pull request from {pullRequestSourceRef} to {parentRepoInfo.Owner}:{parentBranchRef}");
+            Console.WriteLine($"Creating pull request from {pullRequestSourceRef} to {parentRepoInfo.Owner}:{parentBranchRef}.");
             // Create a pull request from {pullRequestOwner}/{pullRequestRepoName} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
-            var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest($"Update submodule {submoduleRepoInfo.Owner}/{submoduleRepoInfo.Name}", pullRequestSourceRef, parentBranchRef));
+            try
+            {
+                if (!gitDryRun)
+                {
+                    throw new NotImplementedException();
+                    var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest(pullRequestTitle, pullRequestSourceRef, parentBranchRef));
+                    Console.WriteLine($"Pull request created: {newPullRequest.HtmlUrl}.");
+                }
+                else
+                {
+                    Console.WriteLine($"[Dry run!] Would have created pull request on parent repo.");
+                }
+            }
+            catch (Exception)
+            {
+                Console.WriteLine($"Failed to create pull request.");
+            }
         }
 
         static GitSubmoduleEntry FindGitSubmoduleEntry(string gitmodulesFileContent, string submoduleRepoName)
