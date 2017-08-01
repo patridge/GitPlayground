@@ -7,7 +7,7 @@ Here's what it does at a high level
 1. Checks what version the submodule repo is current at (for a given branch, defaulting to **master**)
 2. Checks what hash/SHA on the submodule repo the parent repo currently has the submodule pointing to (for a given branch, defaulting to **master**)
 3. If those versions differ via string check (not any sort of "newness" check)
-    1. Ensure the pull request creator has a fork of the parent repo, creating if necessary
+    1. Ensure the pull request creator has a fork of the parent repo, creating if necessary ([fork creation currently broken](https://github.com/patridge/SubmoduleUpdateGenerator/issues/1))
 	2. Create a `patch-#` branch on that fork to contain the submodule update changes
 	3. Updates the submodule target SHA to the latest on the submodule repo
 	4. Pushes changes to fork repo on GitHub
