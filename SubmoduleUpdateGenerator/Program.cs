@@ -56,7 +56,6 @@ namespace SubmoduleUpdateGenerator
                 gitHubPersonalAccessToken = gitHubPersonalAccessToken ?? (gitHubPersonalAccessToken = ConfigurationManager.AppSettings.Get(gitHubPersonalAccessTokenKey));
                 gitSubmoduleRepoOwner = gitSubmoduleRepoOwner ?? gitParentRepoOwner;
                 gitPullRequestOwner = gitPullRequestOwner ?? gitParentRepoOwner;
-                gitPullRequestTitle = gitPullRequestTitle ?? $"Update submodule {gitSubmoduleRepoOwner}/{gitSubmoduleRepoName}";
             }
             catch (OptionException e)
             {
@@ -90,6 +89,11 @@ namespace SubmoduleUpdateGenerator
             };
 
             await UpdateSubmoduleTarget(gitHubClient, gitPullRequestOwner, gitPullRequestTitle, parentRepoInfo, submoduleRepoInfo, gitDryRun);
+        }
+
+        static string CreateDefaultPullRequestTitle(string submoduleOwnerName, string submoduleRepoName, string submoduleCommitHash)
+        {
+            return $"Bump to {submoduleOwnerName}/{submoduleRepoName}@{submoduleCommitHash}";
         }
 
         static async Task UpdateSubmoduleTarget(GitHubClient gitHubClient, string pullRequestOwner, string pullRequestTitle, RepoQueryInfo parentRepoInfo, RepoQueryInfo submoduleRepoInfo, bool gitDryRun)
@@ -236,7 +240,7 @@ namespace SubmoduleUpdateGenerator
             {
                 if (!gitDryRun)
                 {
-                    throw new NotImplementedException();
+                    pullRequestTitle = pullRequestTitle ?? CreateDefaultPullRequestTitle(submoduleRepoInfo.Owner, submoduleRepoInfo.Name, submoduleBranchLatestSha);
                     var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest(pullRequestTitle, pullRequestSourceRef, parentBranchRef));
                     Console.WriteLine($"Pull request created: {newPullRequest.HtmlUrl}.");
                 }
