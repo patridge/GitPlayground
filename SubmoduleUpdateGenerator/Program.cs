@@ -111,7 +111,7 @@ namespace SubmoduleUpdateGenerator
             Console.WriteLine($"Parent repo branch latest hash: {parentBranchLatestSha}.");
 
             // Get latest submodule repo details
-            var submoduleRepoId = (await gitHubClient.Repository.Get(parentRepoInfo.Owner, submoduleRepoInfo.Name)).Id;
+            var submoduleRepoId = (await gitHubClient.Repository.Get(submoduleRepoInfo.Owner, submoduleRepoInfo.Name)).Id;
             var submoduleBranchLatestSha = (await gitHubClient.Git.Tree.Get(submoduleRepoId, submoduleRepoInfo.BranchName)).Sha;
             Console.WriteLine($"Submodule repo branch latest hash: {submoduleBranchLatestSha}.");
 
