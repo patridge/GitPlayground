@@ -47,7 +47,7 @@ namespace SubmoduleUpdateGenerator
                 { "subOwner=", "Submodule repo owner, if distince from parent owner", owner => gitSubmoduleRepoOwner = owner },
                 { "subBranch=", "Branch name within submodule repo", subBranch =>  gitSubmoduleRepoBranchName = subBranch },
                 { "pullOwner=", "Owner of pull request to be created", pullOwner => gitPullRequestOwner = pullOwner },
-                { "pullMessage=", "Title of the generated pull request", pullMessage => gitPullRequestTitle = pullMessage },
+                { "pullMessage=", "Title of the generated pull request and commit message (default: auto-generated with link to submodule hash)", pullMessage => gitPullRequestTitle = pullMessage },
                 { "dryrun=", "Dry run: do not make final pull request on parent GitHub repo", dryRun => { if (!bool.TryParse(dryRun, out gitDryRun)) { gitDryRun = false; } } },
             };
 
@@ -149,6 +149,7 @@ namespace SubmoduleUpdateGenerator
             (long pullRequestOwnerForkRepoId, RepoQueryInfo pullRequestRepoInfo) = await GetOrCreateUserForkBranch(gitHubClient, repoClient, referencesClient, pullRequestOwnerName, pullRequestRepoName, parentBranchLatestSha);
             var pullRequestBranchName = pullRequestRepoInfo.BranchName;
 
+            pullRequestTitle = pullRequestTitle ?? CreateDefaultPullRequestTitle(submoduleRepoInfo.Owner, submoduleRepoInfo.Name, submoduleBranchLatestSha);
             // Create commit on parent to update submodule hash target.
             string pullRequestBranchRef = await CreateSubmoduleUpdateCommit(gitHubClient, pullRequestOwnerName, parentRepoInfo.Name, submoduleRepoInfo.Owner, submoduleRepoInfo.Name, parentBranchLatestSha, submoduleBranchLatestSha, submodulePath, pullRequestOwnerForkRepoId, pullRequestBranchName);
 
@@ -167,7 +168,6 @@ namespace SubmoduleUpdateGenerator
             {
                 if (!gitDryRun)
                 {
-                    pullRequestTitle = pullRequestTitle ?? CreateDefaultPullRequestTitle(submoduleRepoInfo.Owner, submoduleRepoInfo.Name, submoduleBranchLatestSha);
                     var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest(pullRequestTitle, pullRequestSourceRef, parentBranchRef));
                     Console.WriteLine($"Pull request created: {newPullRequest.HtmlUrl}.");
                 }
@@ -182,7 +182,7 @@ namespace SubmoduleUpdateGenerator
             }
         }
 
-        private static async Task<string> CreateSubmoduleUpdateCommit(GitHubClient gitHubClient, string pullRequestOwnerName, string parentRepoName, string submoduleOwnerName, string submoduleRepoName, string parentBranchLatestSha, string submoduleBranchLatestSha, string submodulePath, long pullRequestOwnerForkRepoId, string pullRequestBranchName)
+        private static async Task<string> CreateSubmoduleUpdateCommit(GitHubClient gitHubClient, string commitMessage, string pullRequestOwnerName, string parentRepoName, string submoduleOwnerName, string submoduleRepoName, string parentBranchLatestSha, string submoduleBranchLatestSha, string submodulePath, long pullRequestOwnerForkRepoId, string pullRequestBranchName)
         {
             var updateParentTree = new NewTree { BaseTree = parentBranchLatestSha };
             updateParentTree.Tree.Add(new NewTreeItem
@@ -193,7 +193,6 @@ namespace SubmoduleUpdateGenerator
                 Type = TreeType.Commit,
             });
             var newParentTree = await gitHubClient.Git.Tree.Create(pullRequestOwnerForkRepoId, updateParentTree);
-            var commitMessage = $"Update submodule {submoduleOwnerName}/{submoduleRepoName} to latest.";
             var newCommit = new NewCommit(commitMessage, newParentTree.Sha, parentBranchLatestSha);
             var pullRequestBranchRef = $"heads/{pullRequestBranchName}";
             var commit = await gitHubClient.Git.Commit.Create(pullRequestOwnerName, parentRepoName, newCommit);
