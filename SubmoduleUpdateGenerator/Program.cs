@@ -176,9 +176,9 @@ namespace SubmoduleUpdateGenerator
                     Console.WriteLine($"[Dry run!] Would have created pull request on parent repo.");
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                Console.WriteLine($"Failed to create pull request.");
+                Console.WriteLine($"Failed to create pull request:\n{ex}\n");
             }
         }
 
