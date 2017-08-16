@@ -151,24 +151,24 @@ namespace SubmoduleUpdateGenerator
 
             pullRequestTitle = pullRequestTitle ?? CreateDefaultPullRequestTitle(submoduleRepoInfo.Owner, submoduleRepoInfo.Name, submoduleBranchLatestSha);
             // Create commit on parent to update submodule hash target.
-            string pullRequestBranchRef = await CreateSubmoduleUpdateCommit(gitHubClient, pullRequestOwnerName, parentRepoInfo.Name, submoduleRepoInfo.Owner, submoduleRepoInfo.Name, parentBranchLatestSha, submoduleBranchLatestSha, submodulePath, pullRequestOwnerForkRepoId, pullRequestBranchName);
+            string pullRequestBranchRef = await CreateSubmoduleUpdateCommit(gitHubClient, pullRequestTitle, pullRequestOwnerName, parentRepoInfo.Name, submoduleRepoInfo.Owner, submoduleRepoInfo.Name, parentBranchLatestSha, submoduleBranchLatestSha, submodulePath, pullRequestOwnerForkRepoId, pullRequestBranchName);
 
-            var parentBranchRef = $"heads/{parentRepoInfo.BranchName}";
-            var pullRequestSourceRef = $"{pullRequestBranchRef}";
+            var pullRequestBase = $"{parentRepoInfo.BranchName}";
+            var pullRequestHead = $"{pullRequestBranchName}";
             var isPullRequestOwnerSameAsParentRepoOwner = pullRequestOwnerName == parentRepoInfo.Owner;
             if (!isPullRequestOwnerSameAsParentRepoOwner)
             {
                 // For a PR, the comparison ref to a different user requires a prefix.
-                pullRequestSourceRef = $"{pullRequestOwnerName}:{pullRequestBranchRef}";
+                pullRequestHead = $"{pullRequestOwnerName}:{pullRequestBranchName}";
             }
 
-            Console.WriteLine($"Creating pull request from {pullRequestSourceRef} to {parentRepoInfo.Owner}:{parentBranchRef}.");
+            Console.WriteLine($"Creating pull request from {pullRequestHead} to {parentRepoInfo.Owner}:{pullRequestBase}.");
             // Create a pull request from {pullRequestOwner}/{pullRequestRepoName} to {parentRepoInfo.Owner}/{parentRepoInfo.Name}
             try
             {
                 if (!gitDryRun)
                 {
-                    var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest(pullRequestTitle, pullRequestSourceRef, parentBranchRef));
+                    var newPullRequest = await pullRequestsClient.Create(parentRepoId, new NewPullRequest(pullRequestTitle, pullRequestHead, pullRequestBase));
                     Console.WriteLine($"Pull request created: {newPullRequest.HtmlUrl}.");
                 }
                 else
