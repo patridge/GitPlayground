@@ -129,6 +129,8 @@ namespace SubmoduleUpdateGenerator
             // Get the path one level up from submodule path.
             var submodulePathParts = submodulePath.Split(new[] { '/' });
             var submodulePathImmediateParentPath = string.Join("/", submodulePathParts.Take(submodulePathParts.Length - 1));
+            // Handle when the submodule path is in the root of the repo.
+            if (submodulePathImmediateParentPath == "") { submodulePathImmediateParentPath = "/"; }
             var submodulePathContents = await repoClient.Content.GetAllContents(parentRepoId, submodulePathImmediateParentPath);
             // Find our submodule's "file" in the parent directory's contents.
             var submoduleContent = submodulePathContents.FirstOrDefault(content => content.Path == submodulePath);
