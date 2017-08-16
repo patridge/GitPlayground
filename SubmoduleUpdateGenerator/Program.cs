@@ -279,8 +279,13 @@ namespace SubmoduleUpdateGenerator
                     }
                     return submoduleEntry;
                 })
-                // ASSUMPTION: URL for submodule will end with the submodule repo name + ".git"
-                .FirstOrDefault(submoduleEntry => submoduleEntry.Url.EndsWith($"{submoduleRepoName}.git", StringComparison.InvariantCultureIgnoreCase));
+                .FirstOrDefault(submoduleEntry => {
+                    // ASSUMPTION: URL is either relative or full URL
+                    // relative example: `url = ../../someowner/somereponame.git`
+                    // full URL example: `url = git@github.com:someowner/somereponame`
+                    return submoduleEntry.Url.EndsWith($"/{submoduleRepoName}.git", StringComparison.InvariantCultureIgnoreCase)
+                        || submoduleEntry.Url.EndsWith($"/{submoduleRepoName}", StringComparison.InvariantCultureIgnoreCase);
+                });
             return gitmodulesGroupForSubmodule;
         }
 
